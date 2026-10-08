@@ -13,15 +13,15 @@ O projeto foi desenvolvido com **PHP, MySQL/MariaDB, JavaScript e Bootstrap**, c
 
 ---
 
-#✨ Funcionalidades
+# ✨ Funcionalidades
 
-##📊 Dashboard
+## 📊 Dashboard
 
 - Visualização dos principais indicadores do sistema
 - Resumo das operações comerciais
 - Informações relacionadas ao estoque e vendas
 - 
-##🚘 Gestão de Veículos
+## 🚘 Gestão de Veículos
 
 - Cadastro de veículos
 - Edição de informações
@@ -30,30 +30,31 @@ O projeto foi desenvolvido com **PHP, MySQL/MariaDB, JavaScript e Bootstrap**, c
 - Organização dos veículos por loja
 - Gerenciamento de fotos
   
-##🏢 Gestão de Lojas
+## 🏢 Gestão de Lojas
 
 - Cadastro e gerenciamento de lojas
 - Associação de veículos às respectivas unidades
 - Organização das informações por estabelecimento
   
-##📦 Controle de Estoque
+## 📦 Controle de Estoque
 
 - Visualização dos veículos disponíveis
 - Controle dos veículos cadastrados
 - Organização do estoque por loja
   
-##💰 Gestão de Vendas
+## 💰 Gestão de Vendas
 
 - Registro de vendas
 - Associação de veículos às vendas
 - Consulta das operações realizadas
-- 📈 Relatórios
+  
+## 📈 Relatórios
 - Consulta de informações comerciais
 - Filtros por loja
 - Filtros por período
 - Visualização dos dados para acompanhamento das operações
   
-##🛠️ Tecnologias Utilizadas
+## 🛠️ Tecnologias Utilizadas
 
 - Tecnologia	Utilização
 - PHP 8.x	Backend e regras de negócio
@@ -64,7 +65,7 @@ O projeto foi desenvolvido com **PHP, MySQL/MariaDB, JavaScript e Bootstrap**, c
 - CSS3	Estilização
 - SVG	Diagrama e elementos gráficos
   
-##🗄️ Banco de Dados
+## 🗄️ Banco de Dados
 
 O projeto utiliza MySQL/MariaDB para armazenamento das informações do sistema.
 
@@ -85,7 +86,7 @@ O sistema utiliza uma estrutura relacional sólida para garantir a integridade e
 
 
 
-##📂 Estrutura do Projeto
+## 📂 Estrutura do Projeto
 AutoManagerPro/
 │
 ├── assets/
@@ -110,7 +111,7 @@ http://awaldige.infinityfree.me/vendascarros/
 ![Captura de tela 2026-04-02 151943](https://github.com/user-attachments/assets/1737c6bb-5c19-4853-8cff-3dcd44df0f66)
 ![Captura de tela 2026-04-02 152312](https://github.com/user-attachments/assets/b963a66e-80ef-42f0-ae9c-71d776db1d79)
 
-##🚀 Como Executar Localmente
+## 🚀 Como Executar Localmente
 1. Clone o repositório
 git clone https://github.com/awaldige/AutoManagerPro.git
 2. Acesse a pasta
@@ -149,7 +150,7 @@ Exemplo:
 
 http://localhost/AutoManagerPro/
 
-##🧠 Destaques Técnicos
+## 🧠 Destaques Técnicos
 
 - Arquitetura web baseada em PHP
 - Persistência de dados com MySQL/MariaDB
@@ -162,7 +163,7 @@ http://localhost/AutoManagerPro/
 - Manipulação de dados utilizando JavaScript
 - Diagrama de relacionamento do banco de dados
 
-##🔮 Possíveis Melhorias Futuras
+## 🔮 Possíveis Melhorias Futuras
 
 - Sistema de autenticação e níveis de acesso mais avançados
 - Histórico detalhado de alterações
@@ -172,19 +173,19 @@ http://localhost/AutoManagerPro/
 - Integração com serviços externos
 - Melhorias adicionais de desempenho e segurança
   
-##🎯 Objetivo do Projeto
+## 🎯 Objetivo do Projeto
 
 O AutoManager Pro foi desenvolvido como uma solução de gestão para demonstrar na prática a aplicação de conceitos de desenvolvimento web Full Stack, banco de dados relacional, operações CRUD, organização de sistemas administrativos e desenvolvimento de interfaces responsivas.
 
-##👨‍💻 Autor
+## 👨‍💻 Autor
 
 André Waldige
 
 Desenvolvedor Full Stack — AW TECHNOLOGY
 
-##🔗 GitHub:
+## 🔗 GitHub:
 https://github.com/awaldige
 
-##📄 Licença
+## 📄 Licença
 
 Projeto desenvolvido para portfólio profissional e demonstração de habilidades em desenvolvimento web.
