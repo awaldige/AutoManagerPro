@@ -1,0 +1,7 @@
+﻿# Backups locais do banco de dados
+backups/
+
+# Arquivos de ambiente e credenciais
+.env
+.env.*
+!.env.example

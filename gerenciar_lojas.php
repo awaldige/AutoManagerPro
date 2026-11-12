@@ -1,182 +1,711 @@
-<?php 
-include('conexao.php'); 
+﻿
+<?php
+require_once 'conexao.php';
 
-$mensagem = "";
-$tipo_alerta = "success";
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-// --- LÓGICA PARA ADICIONAR LOJA ---
-if (isset($_POST['add_loja'])) {
-    $nome = $conn->real_escape_string($_POST['nome_loja']);
-    if ($conn->query("INSERT INTO Loja (nome) VALUES ('$nome')")) {
-        header("Location: gerenciar_lojas.php?status=cadastrada");
-        exit();
-    }
+function e($value): string
+{
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-// --- LÓGICA PARA EDITAR LOJA ---
-if (isset($_POST['salvar_edicao'])) {
-    $id = (int)$_POST['id_loja'];
-    $nome = $conn->real_escape_string($_POST['nome_loja']);
-    if ($conn->query("UPDATE Loja SET nome = '$nome' WHERE id_loja = $id")) {
-        header("Location: gerenciar_lojas.php?status=editada");
-        exit();
-    }
+function redirecionar(string $status): void
+{
+    header('Location: gerenciar_lojas.php?status=' . urlencode($status));
+    exit;
 }
 
-// --- LÓGICA PARA EXCLUIR LOJA ---
-if (isset($_GET['excluir'])) {
-    $id = (int)$_GET['excluir'];
+$mensagens = [
+    'cadastrada' => ['success', 'Loja cadastrada com sucesso!'],
+    'editada' => ['success', 'Loja atualizada com sucesso!'],
+    'excluida' => ['success', 'Loja excluída com sucesso!'],
+    'erro_fk' => ['warning', 'Não é possível excluir esta loja porque existem veículos vinculados a ela.'],
+    'nao_encontrada' => ['warning', 'A loja informada não foi encontrada.'],
+    'nome_invalido' => ['warning', 'Informe um nome de loja válido.'],
+    'erro' => ['danger', 'Não foi possível concluir a operação. Tente novamente.'],
+    'csrf' => ['danger', 'Sua sessão de formulário expirou. Atualize a página e tente novamente.'],
+];
+
+$mensagem = '';
+$tipoAlerta = 'success';
+
+$status = $_GET['status'] ?? '';
+
+if (isset($mensagens[$status])) {
+    [$tipoAlerta, $mensagem] = $mensagens[$status];
+}
+
+// Token de proteção dos formulários.
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+if (empty($_SESSION['csrf_lojas'])) {
+    $_SESSION['csrf_lojas'] = bin2hex(random_bytes(32));
+}
+
+$csrfToken = $_SESSION['csrf_lojas'];
+
+// Processamento dos formulários.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $tokenRecebido = $_POST['csrf_token'] ?? '';
+
+    if (!is_string($tokenRecebido) ||
+        !hash_equals($csrfToken, $tokenRecebido)) {
+        redirecionar('csrf');
+    }
+
     try {
-        // O uso do @ suprime warnings se houver restrição de chave estrangeira, 
-        // mas o try/catch trata o erro corretamente.
-        if ($conn->query("DELETE FROM Loja WHERE id_loja = $id")) {
-            header("Location: gerenciar_lojas.php?status=excluida");
-            exit();
+        // Cadastro.
+        if (isset($_POST['add_loja'])) {
+            $nome = trim((string)($_POST['nome_loja'] ?? ''));
+            $endereco = trim((string)($_POST['endereco'] ?? ''));
+
+            if ($nome === '' || mb_strlen($nome) > 100 ||
+                mb_strlen($endereco) > 255) {
+                redirecionar('nome_invalido');
+            }
+
+            $stmt = $conn->prepare(
+                "INSERT INTO loja (nome, endereco) VALUES (?, ?)"
+            );
+
+            $stmt->bind_param('ss', $nome, $endereco);
+            $stmt->execute();
+            $stmt->close();
+
+            redirecionar('cadastrada');
         }
-    } catch (Exception $e) {
-        header("Location: gerenciar_lojas.php?status=erro_fk");
-        exit();
+
+        // Edição.
+        if (isset($_POST['salvar_edicao'])) {
+            $id = filter_var(
+                $_POST['id_loja'] ?? null,
+                FILTER_VALIDATE_INT
+            );
+
+            $nome = trim((string)($_POST['nome_loja'] ?? ''));
+            $endereco = trim((string)($_POST['endereco'] ?? ''));
+
+            if (!$id || $id <= 0 || $nome === '' ||
+                mb_strlen($nome) > 100 ||
+                mb_strlen($endereco) > 255) {
+                redirecionar('nome_invalido');
+            }
+
+            $stmt = $conn->prepare(
+                "UPDATE loja SET nome = ?, endereco = ? WHERE id_loja = ?"
+            );
+
+            $stmt->bind_param('ssi', $nome, $endereco, $id);
+            $stmt->execute();
+
+            $afetadas = $stmt->affected_rows;
+            $stmt->close();
+
+            if ($afetadas === 0) {
+                $verifica = $conn->prepare(
+                    "SELECT id_loja FROM loja WHERE id_loja = ?"
+                );
+                $verifica->bind_param('i', $id);
+                $verifica->execute();
+                $existe = $verifica->get_result()->num_rows > 0;
+                $verifica->close();
+
+                if (!$existe) {
+                    redirecionar('nao_encontrada');
+                }
+            }
+
+            redirecionar('editada');
+        }
+
+        // Exclusão.
+        if (isset($_POST['excluir_loja'])) {
+            $id = filter_var(
+                $_POST['id_loja'] ?? null,
+                FILTER_VALIDATE_INT
+            );
+
+            if (!$id || $id <= 0) {
+                redirecionar('nao_encontrada');
+            }
+
+            $conn->begin_transaction();
+
+            try {
+                // Bloqueia a loja durante a verificação.
+                $stmt = $conn->prepare(
+                    "SELECT id_loja FROM loja WHERE id_loja = ? FOR UPDATE"
+                );
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+
+                $lojaExiste = $stmt->get_result()->num_rows > 0;
+                $stmt->close();
+
+                if (!$lojaExiste) {
+                    $conn->rollback();
+                    redirecionar('nao_encontrada');
+                }
+
+                // Verifica veículos vinculados.
+                $stmt = $conn->prepare(
+                    "SELECT COUNT(*) AS total FROM carro WHERE id_loja = ?"
+                );
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+
+                $totalVeiculos = (int)$stmt->get_result()->fetch_assoc()['total'];
+                $stmt->close();
+
+                if ($totalVeiculos > 0) {
+                    $conn->rollback();
+                    redirecionar('erro_fk');
+                }
+
+                $stmt = $conn->prepare(
+                    "DELETE FROM loja WHERE id_loja = ?"
+                );
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $stmt->close();
+
+                $conn->commit();
+
+                redirecionar('excluida');
+
+            } catch (Throwable $exception) {
+                $conn->rollback();
+
+                // Uma restrição de chave estrangeira também impede
+                // a exclusão de registros relacionados.
+                redirecionar('erro_fk');
+            }
+        }
+
+    } catch (Throwable $exception) {
+        redirecionar('erro');
     }
 }
 
-// Mensagens de Feedback
-if (isset($_GET['status'])) {
-    $msgs = [
-        'cadastrada' => "✅ Loja cadastrada com sucesso!",
-        'editada'    => "✏️ Loja atualizada com sucesso!",
-        'excluida'   => "🗑️ Loja removida com sucesso!",
-        'erro_fk'    => "⚠️ Não é possível excluir: existem carros vinculados a esta loja."
-    ];
-    $mensagem = $msgs[$_GET['status']] ?? "";
-    if ($_GET['status'] == 'erro_fk') $tipo_alerta = "danger";
+// Consulta das lojas.
+$lojas = [];
+$totalLojas = 0;
+$totalVeiculos = 0;
+
+$sql = "
+    SELECT
+        l.id_loja,
+        l.nome,
+        l.endereco,
+        COUNT(c.id_carro) AS total_veiculos
+    FROM loja l
+    LEFT JOIN carro c ON c.id_loja = l.id_loja
+    GROUP BY l.id_loja, l.nome, l.endereco
+    ORDER BY l.nome ASC
+";
+
+$resultado = $conn->query($sql);
+
+while ($linha = $resultado->fetch_assoc()) {
+    $lojas[] = $linha;
+    $totalVeiculos += (int)$linha['total_veiculos'];
 }
+
+$totalLojas = count($lojas);
 ?>
 
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <title>Gestão de Lojas - AutoManager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Gerenciar Lojas | AutoManagerPro</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet">
+
     <style>
-        body { background-color: #f4f7f6; }
-        .card { border-radius: 15px; border: none; }
-        .btn-action { padding: 4px 8px; font-size: 0.85rem; border-radius: 8px; }
-        .table td { vertical-align: middle; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0b1121;
+        }
+
+        .panel {
+            background: #111c31;
+            border: 1px solid #24324a;
+        }
+
+        .field {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid #334155;
+            border-radius: 9px;
+            background: #0b1121;
+            color: #e2e8f0;
+            outline: none;
+        }
+
+        .field:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,.15);
+        }
+
+        .field::placeholder {
+            color: #64748b;
+        }
+
+        .table-row:hover {
+            background: rgba(51,65,85,.2);
+        }
+
+        .action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            transition: .2s;
+        }
     </style>
 </head>
-<body>
 
-<div class="container py-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="fw-bold text-dark mb-0">🏢 Gestão de Lojas</h2>
-            <p class="text-muted">Administre as unidades e filiais</p>
+<body class="min-h-screen text-slate-200">
+
+<div class="max-w-7xl mx-auto px-4 py-8 md:px-8">
+
+    <header class="flex flex-col sm:flex-row sm:items-center
+                   sm:justify-between gap-5 mb-8">
+<div>
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-11 h-11 rounded-xl bg-blue-500/10
+                            text-blue-400 flex items-center justify-center">
+                    <i class="fa-solid fa-building text-xl"></i>
+                </div>
+
+                <div>
+                    <h1 class="text-2xl font-extrabold text-white">
+                        Gerenciamento de Lojas
+                    </h1>
+
+                    <p class="text-sm text-slate-400">
+                        Administração de unidades e filiais
+                    </p>
+                </div>
+            </div>
         </div>
-        <a href="index.php" class="btn btn-dark shadow-sm px-4">Voltar ao Painel</a>
-    </div>
+
+        <a href="index.php"
+           class="inline-flex items-center justify-center gap-2
+                  px-5 py-3 rounded-xl bg-slate-700 hover:bg-slate-600
+                  text-white text-sm font-bold transition">
+            <i class="fa-solid fa-arrow-left"></i>
+            Voltar ao painel
+        </a>
+
+    </header>
 
     <?php if ($mensagem): ?>
-        <div class="alert alert-<?= $tipo_alerta ?> alert-dismissible fade show shadow-sm" role="alert">
-            <?= $mensagem ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="mb-6 p-4 rounded-xl border
+            <?= $tipoAlerta === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : ($tipoAlerta === 'warning'
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                    : 'bg-red-500/10 border-red-500/30 text-red-300') ?>">
+
+            <div class="flex items-center gap-3">
+                <i class="fa-solid
+                    <?= $tipoAlerta === 'success'
+                        ? 'fa-circle-check'
+                        : ($tipoAlerta === 'warning'
+                            ? 'fa-triangle-exclamation'
+                            : 'fa-circle-exclamation') ?>"></i>
+
+                <span class="text-sm font-semibold"><?= e($mensagem) ?></span>
+            </div>
+
         </div>
     <?php endif; ?>
 
-    <div class="row g-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm p-4 text-white bg-success">
-                <h6 class="fw-bold text-uppercase mb-3 small">Adicionar Nova Unidade</h6>
-                <form method="POST">
-                    <div class="mb-3">
-                        <input type="text" name="nome_loja" class="form-control border-0" placeholder="Ex: Filial Centro" required>
-                    </div>
-                    <button type="submit" name="add_loja" class="btn btn-light w-100 fw-bold text-success">Salvar Loja</button>
-                </form>
+    <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+
+        <div class="panel rounded-2xl p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Total de lojas
+                    </p>
+
+                    <p class="text-3xl font-extrabold text-white mt-2">
+                        <?= $totalLojas ?>
+                    </p>
+                </div>
+
+                <div class="w-12 h-12 rounded-xl bg-blue-500/10
+                            text-blue-400 flex items-center justify-center">
+                    <i class="fa-solid fa-building text-xl"></i>
+                </div>
             </div>
         </div>
 
-        <div class="col-md-8">
-            <div class="card shadow-sm overflow-hidden">
-                <div class="card-header bg-white fw-bold py-3">Lojas Ativas</div>
-                <div class="card-body p-0">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light small">
-                            <tr>
-                                <th class="ps-4 text-start">ID</th>
-                                <th class="text-start">Nome da Loja</th>
-                                <th class="text-end pe-4">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $res = $conn->query("SELECT * FROM Loja ORDER BY nome ASC");
-                            if ($res->num_rows > 0):
-                                while($loja = $res->fetch_assoc()): ?>
-                                <tr>
-                                    <td class="ps-4 text-start text-muted">#<?= $loja['id_loja'] ?></td>
-                                    <td class="text-start fw-semibold"><?= $loja['nome'] ?></td>
-                                    <td class="text-end pe-4">
-                                        <button class="btn btn-outline-primary btn-action" 
-                                                onclick="abrirModal(<?= $loja['id_loja'] ?>, '<?= addslashes($loja['nome']) ?>')">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                        <a href="gerenciar_lojas.php?excluir=<?= $loja['id_loja'] ?>" 
-                                           class="btn btn-outline-danger btn-action ms-1" 
-                                           onclick="return confirm('Confirmar exclusão desta loja?')">
-                                            <i class="bi bi-trash"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                                <?php endwhile; 
-                            else: ?>
-                                <tr>
-                                    <td colspan="3" class="text-center py-4 text-muted">Nenhuma loja cadastrada.</td>
-                                </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+        <div class="panel rounded-2xl p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Veículos vinculados
+                    </p>
+
+                    <p class="text-3xl font-extrabold text-white mt-2">
+                        <?= $totalVeiculos ?>
+                    </p>
+                </div>
+
+                <div class="w-12 h-12 rounded-xl bg-emerald-500/10
+                            text-emerald-400 flex items-center justify-center">
+                    <i class="fa-solid fa-car text-xl"></i>
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
-<div class="modal fade" id="modalEditarLoja" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title fw-bold">Editar Unidade</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <section class="panel rounded-2xl p-6 h-fit">
+
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10
+                            text-emerald-400 flex items-center justify-center">
+                    <i class="fa-solid fa-plus"></i>
+                </div>
+
+                <div>
+                    <h2 class="font-bold text-white">Nova loja</h2>
+                    <p class="text-xs text-slate-400">Cadastrar unidade</p>
+                </div>
             </div>
-            <form method="POST">
-                <div class="modal-body py-4">
-                    <input type="hidden" name="id_loja" id="edit_id">
-                    
-                    <label class="form-label fw-bold small text-muted">NOME DA LOJA</label>
-                    <input type="text" name="nome_loja" id="edit_nome" class="form-control form-control-lg" required>
+
+            <form method="POST" class="space-y-4">
+
+                <input type="hidden" name="csrf_token"
+                       value="<?= e($csrfToken) ?>">
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 mb-2">
+                        NOME DA LOJA *
+                    </label>
+
+                    <input type="text"
+                           name="nome_loja"
+                           maxlength="100"
+                           class="field"
+                           placeholder="Ex.: Filial Centro"
+                           required>
                 </div>
-                <div class="modal-footer bg-light border-0">
-                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" name="salvar_edicao" class="btn btn-success px-4 fw-bold shadow-sm">Salvar Alterações</button>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 mb-2">
+                        ENDEREÇO
+                    </label>
+
+                    <textarea name="endereco"
+                              maxlength="255"
+                              rows="3"
+                              class="field resize-none"
+                              placeholder="Endereço da unidade (opcional)"></textarea>
                 </div>
+
+                <button type="submit"
+                        name="add_loja"
+                        class="w-full py-3 rounded-xl bg-emerald-500
+                               hover:bg-emerald-400 text-slate-950
+                               font-extrabold text-sm transition">
+
+                    <i class="fa-solid fa-plus mr-2"></i>
+                    Cadastrar loja
+
+                </button>
+
             </form>
-        </div>
+
+        </section>
+
+        <section class="panel rounded-2xl overflow-hidden lg:col-span-2">
+
+            <div class="p-5 border-b border-slate-700/70">
+                <h2 class="font-bold text-white">Lojas cadastradas</h2>
+
+                <p class="text-xs text-slate-400 mt-1">
+                    Consulte e gerencie as unidades do sistema.
+                </p>
+            </div>
+
+            <?php if (count($lojas) > 0): ?>
+
+                <div class="overflow-x-auto">
+
+                    <table class="w-full text-sm text-left">
+
+                        <thead class="bg-slate-800/70 text-slate-400
+                                      text-xs uppercase tracking-wider">
+
+                            <tr>
+                                <th class="px-5 py-4">Loja</th>
+                                <th class="px-5 py-4">Veículos</th>
+                                <th class="px-5 py-4 text-right">Ações</th>
+                            </tr>
+
+                        </thead>
+
+                        <tbody class="divide-y divide-slate-700/60">
+
+                            <?php foreach ($lojas as $loja): ?>
+
+                                <tr class="table-row transition">
+
+                                    <td class="px-5 py-4">
+
+                                        <div class="font-bold text-white">
+                                            <?= e($loja['nome']) ?>
+                                        </div>
+
+                                        <div class="text-xs text-slate-400 mt-1">
+                                            <?= e($loja['endereco'] ?: 'Endereço não informado') ?>
+                                        </div>
+
+                                        <div class="text-[10px] text-slate-500 mt-1">
+                                            ID #<?= (int)$loja['id_loja'] ?>
+                                        </div>
+
+                                    </td>
+
+                                    <td class="px-5 py-4">
+
+                                        <span class="inline-flex items-center gap-2
+                                            px-3 py-1.5 rounded-lg
+                                            bg-blue-500/10 text-blue-300
+                                            text-xs font-bold">
+
+                                            <i class="fa-solid fa-car"></i>
+                                            <?= (int)$loja['total_veiculos'] ?>
+
+                                        </span>
+
+                                    </td>
+
+                                    <td class="px-5 py-4">
+
+                                        <div class="flex justify-end gap-2">
+
+                                            <button type="button"
+                                                    class="action bg-blue-500/10
+                                                           text-blue-400 hover:bg-blue-500/20"
+                                                    title="Editar loja"
+                                                    onclick='abrirModal(
+                                                        <?= (int)$loja['id_loja'] ?>,
+                                                        <?= json_encode($loja['nome'], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+                                                        <?= json_encode($loja['endereco'] ?? '', JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP) ?>
+                                                    )'>
+
+                                                <i class="fa-solid fa-pen"></i>
+
+                                            </button>
+
+                                            <form method="POST"
+                                                  onsubmit="return confirm('Deseja realmente excluir esta loja? Esta ação não poderá ser desfeita.');">
+
+                                                <input type="hidden"
+                                                       name="csrf_token"
+                                                       value="<?= e($csrfToken) ?>">
+
+                                                <input type="hidden"
+                                                       name="id_loja"
+                                                       value="<?= (int)$loja['id_loja'] ?>">
+
+                                                <button type="submit"
+                                                        name="excluir_loja"
+                                                        class="action bg-red-500/10
+                                                               text-red-400 hover:bg-red-500/20"
+                                                        title="Excluir loja">
+
+                                                    <i class="fa-solid fa-trash"></i>
+
+                                                </button>
+
+                                            </form>
+
+                                        </div>
+
+                                    </td>
+
+                                </tr>
+
+                            <?php endforeach; ?>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            <?php else: ?>
+
+                <div class="py-16 text-center">
+                    <i class="fa-solid fa-building text-4xl text-slate-600"></i>
+
+                    <p class="text-slate-300 font-semibold mt-4">
+                        Nenhuma loja cadastrada.
+                    </p>
+
+                    <p class="text-slate-500 text-xs mt-1">
+                        Utilize o formulário para cadastrar a primeira unidade.
+                    </p>
+                </div>
+
+            <?php endif; ?>
+
+        </section>
+
     </div>
+
+    <footer class="text-center text-xs text-slate-500 mt-10">
+        AutoManagerPro · Ambiente demonstrativo
+    </footer>
+
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    // Inicializa o modal do Bootstrap
-    const modalLoja = new bootstrap.Modal(document.getElementById('modalEditarLoja'));
+<!-- Modal de edição -->
 
-    // Função para carregar os dados no modal
-    function abrirModal(id, nome) {
+<div id="modalEditar"
+     class="fixed inset-0 z-50 hidden items-center justify-center
+            bg-black/70 p-4">
+
+    <div class="panel w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl">
+
+        <div class="flex items-center justify-between p-5
+                    border-b border-slate-700">
+
+            <div>
+                <h2 class="font-bold text-white">Editar loja</h2>
+                <p class="text-xs text-slate-400 mt-1">
+                    Atualize os dados da unidade.
+                </p>
+            </div>
+
+            <button type="button"
+                    onclick="fecharModal()"
+                    class="text-slate-400 hover:text-white text-xl"
+                    aria-label="Fechar">
+
+                <i class="fa-solid fa-xmark"></i>
+
+            </button>
+
+        </div>
+
+        <form method="POST" class="p-5 space-y-4">
+
+            <input type="hidden" name="csrf_token"
+                   value="<?= e($csrfToken) ?>">
+
+            <input type="hidden" name="id_loja" id="edit_id">
+
+            <div>
+                <label class="block text-xs font-bold text-slate-400 mb-2">
+                    NOME DA LOJA *
+                </label>
+
+                <input type="text"
+                       name="nome_loja"
+                       id="edit_nome"
+                       maxlength="100"
+                       class="field"
+                       required>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-400 mb-2">
+                    ENDEREÇO
+                </label>
+
+                <textarea name="endereco"
+                          id="edit_endereco"
+                          maxlength="255"
+                          rows="3"
+                          class="field resize-none"></textarea>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-2">
+
+                <button type="button"
+                        onclick="fecharModal()"
+                        class="px-4 py-3 rounded-xl bg-slate-700
+                               hover:bg-slate-600 text-white text-sm font-bold">
+
+                    Cancelar
+
+                </button>
+
+                <button type="submit"
+                        name="salvar_edicao"
+                        class="px-5 py-3 rounded-xl bg-blue-600
+                               hover:bg-blue-500 text-white text-sm font-bold">
+
+                    <i class="fa-solid fa-check mr-2"></i>
+                    Salvar alterações
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+<script>
+    const modal = document.getElementById('modalEditar');
+
+    function abrirModal(id, nome, endereco) {
         document.getElementById('edit_id').value = id;
-        document.getElementById('edit_nome').value = nome;
-        modalLoja.show();
+        document.getElementById('edit_nome').value = nome || '';
+        document.getElementById('edit_endereco').value = endereco || '';
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
     }
+
+    function fecharModal() {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    modal.addEventListener('click', function(event) {
+        if (event.target === modal) {
+            fecharModal();
+        }
+    });
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            fecharModal();
+        }
+    });
 </script>
+
 </body>
 </html>
+
+
+
