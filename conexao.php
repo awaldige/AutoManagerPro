@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Configurações para o seu ambiente específico
 $host = "127.0.0.1"; // IP local para forçar o uso da porta
 $user = "root";
@@ -23,3 +23,5 @@ try {
     }
 }
 ?>
+
+

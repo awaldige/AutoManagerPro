@@ -1,191 +1,187 @@
-# 🚗 AutoManager Pro — Sistema de Gestão de Concessionárias
+# 🚗 AutoManagerPro — Sistema de Gestão de Concessionárias
 
-O **AutoManager Pro** é um sistema web desenvolvido para auxiliar na gestão de concessionárias, centralizando informações sobre **veículos, estoque, lojas, vendas, fotos e relatórios** em uma única plataforma.
+O **AutoManagerPro** é um sistema web desenvolvido para auxiliar na administração de concessionárias de veículos, reunindo em uma única plataforma recursos para gerenciamento de estoque, lojas, veículos, clientes e vendas.
 
-O projeto foi desenvolvido com **PHP, MySQL/MariaDB, JavaScript e Bootstrap**, com foco em organização dos dados, gerenciamento dos veículos e acompanhamento das operações comerciais.
+O projeto foi desenvolvido como aplicação demonstrativa para estudos, portfólio e apresentação de soluções de software da **AW TECHNOLOGY**.
 
----
+## ✨ Funcionalidades
 
-## 🌐 Projeto Online
+### 🚘 Gestão de veículos
+- Cadastro de veículos.
+- Edição e exclusão de registros.
+- Organização por marca e modelo.
+- Controle de informações como ano, preço e características.
+- Exibição de fotos dos veículos.
 
-🔗 **Acesse a aplicação:**
-[AutoManager Pro](https://automanagerpro.onrender.com/)
+### 🏢 Gestão de lojas
+- Cadastro e gerenciamento de lojas.
+- Edição de informações dos estabelecimentos.
+- Associação de veículos às respectivas lojas.
 
----
+### 💰 Gestão de vendas
+- Registro de vendas de veículos.
+- Associação de clientes, vendedores e veículos.
+- Registro das informações comerciais da operação.
+- Emissão de recibo demonstrativo de venda.
 
-# ✨ Funcionalidades
+### 📊 Dashboard e relatórios
+- Painel com indicadores de gestão.
+- Consulta de informações do estoque.
+- Relatórios de vendas.
+- Acompanhamento das operações comerciais.
 
-## 📊 Dashboard
+### ⚙️ Configurações
+- Gerenciamento de marcas e modelos.
+- Organização dos dados utilizados no cadastro de veículos.
 
-- Visualização dos principais indicadores do sistema
-- Resumo das operações comerciais
-- Informações relacionadas ao estoque e vendas
-- 
-## 🚘 Gestão de Veículos
+## 🛠️ Tecnologias utilizadas
 
-- Cadastro de veículos
-- Edição de informações
-- Exclusão de registros
-- Controle de modelos
-- Organização dos veículos por loja
-- Gerenciamento de fotos
-  
-## 🏢 Gestão de Lojas
+- **PHP 8.2** — processamento e regras de negócio.
+- **MySQL / MariaDB** — armazenamento de dados.
+- **MySQLi** — comunicação com o banco de dados.
+- **Tailwind CSS** — estilização de interfaces.
+- **Bootstrap** — componentes de interface em páginas específicas.
+- **JavaScript** — interatividade.
+- **HTML5** — estrutura das páginas.
+- **Font Awesome** — ícones.
+- **SVG** — elementos gráficos e favicon.
 
-- Cadastro e gerenciamento de lojas
-- Associação de veículos às respectivas unidades
-- Organização das informações por estabelecimento
-  
-## 📦 Controle de Estoque
+## 📁 Estrutura do projeto
 
-- Visualização dos veículos disponíveis
-- Controle dos veículos cadastrados
-- Organização do estoque por loja
-  
-## 💰 Gestão de Vendas
-
-- Registro de vendas
-- Associação de veículos às vendas
-- Consulta das operações realizadas
-  
-## 📈 Relatórios
-- Consulta de informações comerciais
-- Filtros por loja
-- Filtros por período
-- Visualização dos dados para acompanhamento das operações
-  
-## 🛠️ Tecnologias Utilizadas
-
-- Tecnologia	Utilização
-- PHP 8.x	Backend e regras de negócio
-- MySQL / MariaDB	Banco de dados
-- JavaScript	Interações da interface
-- Bootstrap 5	Interface responsiva
-- HTML5	Estrutura das páginas
-- CSS3	Estilização
-- SVG	Diagrama e elementos gráficos
-  
-## 🗄️ Banco de Dados
-
-O projeto utiliza MySQL/MariaDB para armazenamento das informações do sistema.
-
-O repositório contém o arquivo:
-
-database.sql
-
-Também está disponível um diagrama da estrutura do banco:
-
-diagrama_er.svg
-
-A estrutura foi organizada para representar entidades relacionadas à gestão de concessionárias, veículos, lojas e operações comerciais.
-
-## 📊 Arquitetura de Dados
-O sistema utiliza uma estrutura relacional sólida para garantir a integridade entre Marcas, Modelos, Lojas e Vendas.
-
-![Diagrama de Entidade Relacionamento](diagrama_er.svg)
-
-
-
-## 📂 Estrutura do Projeto
+```text
 AutoManagerPro/
 │
-├── assets/
-├── config/
-├── controllers/
-├── database.sql
-├── diagrama_er.svg
-├── includes/
-├── models/
-├── views/
-├── index.php
-└── README.md
+├── backups/                # Backups locais do banco de dados
+├── uploads/                # Imagens dos veículos
+│
+├── index.php               # Dashboard principal
+├── veiculos.php             # Listagem do estoque
+├── cadastrar.php            # Cadastro de veículos
+├── editar.php               # Edição de veículos
+├── excluir.php              # Exclusão de veículos
+├── vender.php               # Registro de vendas
+├── relatorio_vendas.php     # Relatórios comerciais
+├── gerenciar_lojas.php      # Gerenciamento de lojas
+├── editar_loja.php          # Edição de lojas
+├── configuracoes.php        # Marcas e modelos
+├── imprimir_recibo.php      # Recibo demonstrativo
+├── gerar_pdf.php            # Geração de PDF
+├── conexao.php              # Conexão com o banco
+│
+├── database.sql             # Estrutura e dados iniciais do banco
+├── diagrama_er.svg          # Diagrama entidade-relacionamento
+├── favicon.svg              # Ícone do sistema
+├── .gitignore               # Arquivos ignorados pelo Git
+└── README.md                # Documentação
+```
 
-A estrutura acima apresenta a organização geral do sistema. Os diretórios podem variar conforme a versão atual do projeto.
+## 🗄️ Banco de dados
 
-##  🔗 Acesse o projeto online:
-http://awaldige.infinityfree.me/vendascarros/
+O projeto utiliza o banco de dados `vendascarros`, com estrutura relacional composta por 14 tabelas:
 
-## 📸 Prévia
+- `acessorio`
+- `banco`
+- `carro`
+- `carro_acessorio`
+- `cliente`
+- `financeira`
+- `gerente`
+- `loja`
+- `manutencao_garantia`
+- `marca`
+- `modelo`
+- `tipopagamento`
+- `venda`
+- `vendedor`
 
-![Captura de tela 2026-04-02 152136](https://github.com/user-attachments/assets/898dc5c2-bf8b-434d-a9c6-c0fd9b67ecbe)
-![Captura de tela 2026-04-02 151943](https://github.com/user-attachments/assets/1737c6bb-5c19-4853-8cff-3dcd44df0f66)
-![Captura de tela 2026-04-02 152312](https://github.com/user-attachments/assets/b963a66e-80ef-42f0-ae9c-71d776db1d79)
+O arquivo `database.sql` contém a estrutura necessária para a criação do banco.
 
-## 🚀 Como Executar Localmente
-1. Clone o repositório
+O diagrama entidade-relacionamento está disponível em `diagrama_er.svg`.
+
+## 🚀 Instalação local
+
+### 1. Requisitos
+
+- PHP 8.2 ou compatível.
+- MySQL ou MariaDB.
+- Apache ou servidor web equivalente.
+- XAMPP (opcional, recomendado para ambiente local).
+
+### 2. Clonar o repositório
+
+```bash
 git clone https://github.com/awaldige/AutoManagerPro.git
-2. Acesse a pasta
+```
+
+Entre na pasta:
+
+```bash
 cd AutoManagerPro
-3. Configure o servidor
+```
 
-Utilize um ambiente PHP local, como:
+### 3. Configurar o banco de dados
 
-XAMPP
-WAMP
-Laragon
+Crie um banco chamado:
 
-Coloque o projeto no diretório correspondente do servidor web.
+```sql
+CREATE DATABASE vendascarros
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_general_ci;
+```
 
-4. Configure o banco de dados
+Importe o arquivo `database.sql` pelo phpMyAdmin ou pelo terminal MySQL.
 
-Crie um banco de dados MySQL/MariaDB e importe o arquivo:
+### 4. Configurar a conexão
 
-database.sql
+Abra o arquivo `conexao.php` e ajuste as configurações conforme seu ambiente:
 
-5. Configure a conexão
+```php
+$host = "127.0.0.1";
+$user = "root";
+$pass = "";
+$db   = "vendascarros";
+$port = 3306;
+```
 
-Ajuste as credenciais de acesso ao banco de dados nos arquivos de configuração do projeto.
+**Importante:** a porta `3306` é apenas um exemplo. Utilize a porta configurada no seu MySQL ou MariaDB.
 
-Exemplo:
+### 5. Executar o projeto
 
-Host: localhost
-Database: automanager
-User: root
-Password: sua_senha
-6. Execute o projeto
+Coloque a pasta dentro do diretório público do Apache.
 
-Com o Apache e o MySQL/MariaDB em execução, acesse o endereço local configurado pelo seu servidor.
+No XAMPP, normalmente:
 
-Exemplo:
+```text
+C:\xampp\htdocs\AutoManagerPro
+```
 
+Inicie o Apache e o MySQL/MariaDB pelo painel do XAMPP.
+
+Acesse:
+
+```text
 http://localhost/AutoManagerPro/
+```
 
-## 🧠 Destaques Técnicos
+## 🔒 Segurança e uso demonstrativo
 
-- Arquitetura web baseada em PHP
-- Persistência de dados com MySQL/MariaDB
-- Operações CRUD para gerenciamento dos dados
-- Organização de veículos e estoque
-- Gerenciamento de múltiplas lojas
-- Registro e consulta de vendas
-- Relatórios com filtros
-- Interface responsiva utilizando Bootstrap
-- Manipulação de dados utilizando JavaScript
-- Diagrama de relacionamento do banco de dados
+Este projeto foi desenvolvido para fins demonstrativos, educacionais e de portfólio.
 
-## 🔮 Possíveis Melhorias Futuras
+- Não utilize dados pessoais ou comerciais reais sem implementar as medidas de segurança necessárias.
+- Configure credenciais próprias para o ambiente de execução.
+- Não publique senhas ou informações confidenciais.
+- Os backups locais do banco de dados não fazem parte do repositório.
+- O recibo emitido pelo sistema é demonstrativo e não possui validade fiscal.
 
-- Sistema de autenticação e níveis de acesso mais avançados
-- Histórico detalhado de alterações
-- Exportação de relatórios
-- Melhorias nos filtros e indicadores
-- Notificações para operações importantes
-- Integração com serviços externos
-- Melhorias adicionais de desempenho e segurança
-  
-## 🎯 Objetivo do Projeto
+## 👨‍💻 Desenvolvedor
 
-O AutoManager Pro foi desenvolvido como uma solução de gestão para demonstrar na prática a aplicação de conceitos de desenvolvimento web Full Stack, banco de dados relacional, operações CRUD, organização de sistemas administrativos e desenvolvimento de interfaces responsivas.
+**André Waldige — AW TECHNOLOGY**
 
-## 👨‍💻 Autor
+Desenvolvimento de sistemas web, aplicações personalizadas e soluções de automação para negócios.
 
-André Waldige
+- GitHub: https://github.com/awaldige
+- Portfólio: https://andre-waldige.vercel.app/
 
-Desenvolvedor Full Stack — AW TECHNOLOGY
+---
 
-## 🔗 GitHub:
-https://github.com/awaldige
-
-## 📄 Licença
-
-Projeto desenvolvido para portfólio profissional e demonstração de habilidades em desenvolvimento web.
+*Desenvolvido por AW TECHNOLOGY.*

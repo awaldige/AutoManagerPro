@@ -1,118 +1,735 @@
-<?php 
-include('conexao.php'); 
+<?php
+require_once 'conexao.php';
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $id_modelo = (int)$_POST['id_modelo'];
-    $ano       = $conn->real_escape_string($_POST['ano']);
-    $preco     = $conn->real_escape_string($_POST['preco']);
-    $id_loja   = (int)$_POST['id_loja'];
-    
-    // --- LÓGICA DA FOTO ---
-    $foto_nome = "sem-foto.jpg"; // Nome padrão caso não envie foto
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 
-    if (isset($_FILES['foto']) && $_FILES['foto']['error'] == 0) {
-        $extensao = strtolower(pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION));
-        $extensoes_permitidas = ['jpg', 'jpeg', 'png', 'webp'];
+/**
+ * AutoManagerPro
+ * Cadastro demonstrativo de veículos.
+ */
 
-        if (in_array($extensao, $extensoes_permitidas)) {
-            // Gera um nome único para não sobrescrever fotos com nomes iguais
-            $foto_nome = md5(uniqid()) . "." . $extensao;
-            $diretorio = "uploads/";
+function e($valor): string
+{
+    return htmlspecialchars((string) $valor, ENT_QUOTES, 'UTF-8');
+}
 
-            // Move o arquivo temporário para a pasta definitiva
-            move_uploaded_file($_FILES['foto']['tmp_name'], $diretorio . $foto_nome);
+if (!isset($_SESSION['csrf_cadastrar'])) {
+    $_SESSION['csrf_cadastrar'] = bin2hex(random_bytes(32));
+}
+
+$erros = [];
+$sucesso = false;
+
+$dados = [
+    'id_loja' => '',
+    'id_modelo' => '',
+    'ano' => '',
+    'preco' => ''
+];
+
+$lojas = [];
+$modelos = [];
+
+$anoMaximo = (int) date('Y') + 1;
+$fotoSalva = null;
+
+/*
+|--------------------------------------------------------------------------
+| Carregar lojas e modelos
+|--------------------------------------------------------------------------
+*/
+
+try {
+    $resultadoLojas = $conn->query(
+        "SELECT id_loja, nome
+         FROM Loja
+         ORDER BY nome ASC"
+    );
+
+    while ($loja = $resultadoLojas->fetch_assoc()) {
+        $lojas[] = $loja;
+    }
+
+    $resultadoModelos = $conn->query(
+        "SELECT
+            mo.id_modelo,
+            mo.nome_modelo,
+            ma.nome_marca
+         FROM Modelo mo
+         LEFT JOIN Marca ma
+            ON ma.id_marca = mo.id_marca
+         ORDER BY ma.nome_marca ASC, mo.nome_modelo ASC"
+    );
+
+    while ($modelo = $resultadoModelos->fetch_assoc()) {
+        $modelos[] = $modelo;
+    }
+
+} catch (Throwable $erro) {
+    error_log('Erro ao carregar cadastro de veículos: ' . $erro->getMessage());
+    $erros[] = 'Não foi possível carregar as lojas e os modelos.';
+}
+
+/*
+|--------------------------------------------------------------------------
+| Processar cadastro
+|--------------------------------------------------------------------------
+*/
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $dados['id_loja'] = trim($_POST['id_loja'] ?? '');
+    $dados['id_modelo'] = trim($_POST['id_modelo'] ?? '');
+    $dados['ano'] = trim($_POST['ano'] ?? '');
+    $dados['preco'] = trim($_POST['preco'] ?? '');
+
+    $token = $_POST['csrf_token'] ?? '';
+
+    if (
+        !is_string($token) ||
+        !hash_equals($_SESSION['csrf_cadastrar'], $token)
+    ) {
+        $erros[] = 'Sua sessão expirou ou a solicitação é inválida. Atualize a página.';
+    }
+
+    /*
+    |----------------------------------------------------------------------
+    | Validar loja
+    |----------------------------------------------------------------------
+    */
+
+    $idLoja = filter_var(
+        $dados['id_loja'],
+        FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1]]
+    );
+
+    if ($idLoja === false) {
+        $erros[] = 'Selecione uma loja válida.';
+    }
+
+    /*
+    |----------------------------------------------------------------------
+    | Validar modelo
+    |----------------------------------------------------------------------
+    */
+
+    $idModelo = filter_var(
+        $dados['id_modelo'],
+        FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1]]
+    );
+
+    if ($idModelo === false) {
+        $erros[] = 'Selecione um modelo válido.';
+    }
+
+    /*
+    |----------------------------------------------------------------------
+    | Validar ano
+    |----------------------------------------------------------------------
+    */
+
+    $ano = filter_var(
+        $dados['ano'],
+        FILTER_VALIDATE_INT
+    );
+
+    if (
+        $ano === false ||
+        $ano < 1900 ||
+        $ano > $anoMaximo
+    ) {
+        $erros[] = 'Informe um ano entre 1900 e ' . $anoMaximo . '.';
+    }
+
+    /*
+    |----------------------------------------------------------------------
+    | Validar preço
+    |----------------------------------------------------------------------
+    */
+
+    $precoInformado = str_replace(',', '.', $dados['preco']);
+
+    if (
+        !preg_match('/^\d{1,8}(?:\.\d{1,2})?$/', $precoInformado) ||
+        (float) $precoInformado <= 0
+    ) {
+        $erros[] = 'Informe um preço válido, maior que zero.';
+    } else {
+        $precoBanco = number_format(
+            (float) $precoInformado,
+            2,
+            '.',
+            ''
+        );
+    }
+
+    /*
+    |----------------------------------------------------------------------
+    | Confirmar existência da loja e do modelo
+    |----------------------------------------------------------------------
+    */
+
+    if (empty($erros)) {
+        try {
+            $stmtLoja = $conn->prepare(
+                "SELECT id_loja FROM Loja WHERE id_loja = ?"
+            );
+
+            $stmtLoja->bind_param('i', $idLoja);
+            $stmtLoja->execute();
+
+            if (!$stmtLoja->get_result()->fetch_assoc()) {
+                $erros[] = 'A loja selecionada não foi encontrada.';
+            }
+
+            $stmtLoja->close();
+
+            $stmtModelo = $conn->prepare(
+                "SELECT id_modelo FROM Modelo WHERE id_modelo = ?"
+            );
+
+            $stmtModelo->bind_param('i', $idModelo);
+            $stmtModelo->execute();
+
+            if (!$stmtModelo->get_result()->fetch_assoc()) {
+                $erros[] = 'O modelo selecionado não foi encontrado.';
+            }
+
+            $stmtModelo->close();
+
+        } catch (Throwable $erro) {
+            error_log('Erro ao validar cadastro: ' . $erro->getMessage());
+            $erros[] = 'Não foi possível validar os dados informados.';
         }
     }
 
-    // --- INSERT NO BANCO ---
-    $sql = "INSERT INTO Carro (id_modelo, ano, preco, id_loja, foto) 
-            VALUES ('$id_modelo', '$ano', '$preco', '$id_loja', '$foto_nome')";
+    /*
+    |----------------------------------------------------------------------
+    | Processar imagem
+    |----------------------------------------------------------------------
+    */
 
-    if ($conn->query($sql)) {
-        header("Location: index.php?msg=cadastrado");
-        exit();
+    if (
+        empty($erros) &&
+        isset($_FILES['foto']) &&
+        $_FILES['foto']['error'] !== UPLOAD_ERR_NO_FILE
+    ) {
+        $arquivo = $_FILES['foto'];
+
+        if ($arquivo['error'] !== UPLOAD_ERR_OK) {
+            $erros[] = 'Ocorreu um erro durante o envio da imagem.';
+
+        } elseif ($arquivo['size'] > 5 * 1024 * 1024) {
+            $erros[] = 'A imagem deve ter no máximo 5 MB.';
+
+        } elseif (!is_uploaded_file($arquivo['tmp_name'])) {
+            $erros[] = 'O arquivo enviado não é válido.';
+
+        } else {
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mime = $finfo->file($arquivo['tmp_name']);
+
+            $formatosPermitidos = [
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/webp' => 'webp'
+            ];
+
+            $informacoesImagem = @getimagesize($arquivo['tmp_name']);
+
+            if (
+                !isset($formatosPermitidos[$mime]) ||
+                $informacoesImagem === false
+            ) {
+                $erros[] = 'Formato de imagem inválido. Utilize JPG, PNG ou WebP.';
+            } else {
+                $pastaUploads = __DIR__ . DIRECTORY_SEPARATOR . 'uploads';
+
+                if (
+                    !is_dir($pastaUploads) ||
+                    !is_writable($pastaUploads)
+                ) {
+                    $erros[] = 'A pasta de imagens não está disponível para gravação.';
+                } else {
+                    $extensao = $formatosPermitidos[$mime];
+
+                    $nomeArquivo = bin2hex(random_bytes(16))
+                        . '.'
+                        . $extensao;
+
+                    $destino = $pastaUploads
+                        . DIRECTORY_SEPARATOR
+                        . $nomeArquivo;
+
+                    if (move_uploaded_file(
+                        $arquivo['tmp_name'],
+                        $destino
+                    )) {
+                        $fotoSalva = $nomeArquivo;
+                    } else {
+                        $erros[] = 'Não foi possível salvar a imagem enviada.';
+                    }
+                }
+            }
+        }
+    }
+
+    /*
+    |----------------------------------------------------------------------
+    | Inserir veículo
+    |----------------------------------------------------------------------
+    */
+
+    if (empty($erros)) {
+        try {
+            $foto = $fotoSalva ?? 'sem-foto.jpg';
+
+            $stmt = $conn->prepare(
+                "INSERT INTO Carro
+                    (ano, preco, foto, id_loja, id_modelo, vendido)
+                 VALUES (?, ?, ?, ?, ?, 0)"
+            );
+
+            $stmt->bind_param(
+                'issii',
+                $ano,
+                $precoBanco,
+                $foto,
+                $idLoja,
+                $idModelo
+            );
+
+            $stmt->execute();
+            $stmt->close();
+
+            $_SESSION['csrf_cadastrar'] = bin2hex(random_bytes(32));
+
+            header('Location: veiculos.php?msg=cadastrado');
+            exit;
+
+        } catch (Throwable $erro) {
+            error_log('Erro ao cadastrar veículo: ' . $erro->getMessage());
+
+            if ($fotoSalva !== null) {
+                $arquivoNovo = __DIR__
+                    . DIRECTORY_SEPARATOR
+                    . 'uploads'
+                    . DIRECTORY_SEPARATOR
+                    . $fotoSalva;
+
+                if (is_file($arquivoNovo)) {
+                    @unlink($arquivoNovo);
+                }
+            }
+
+            $erros[] = 'Não foi possível cadastrar o veículo. Tente novamente.';
+        }
     }
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
+
 <head>
-    <meta charset="UTF-8">
-    <title>Cadastrar Veículo - AutoManager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Cadastrar Veículo | AutoManagerPro</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        fundo: '#0b1121',
+                        painel: '#111c32',
+                        destaque: '#10b981'
+                    }
+                }
+            }
+        };
+    </script>
+
     <style>
-        body { background-color: #f4f7f6; }
-        .card { border-radius: 15px; border: none; }
+        body {
+            background: #0b1121;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .campo {
+            width: 100%;
+            background: #0b1121;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 12px 14px;
+            color: #f8fafc;
+            outline: none;
+            transition: border-color .2s, box-shadow .2s;
+        }
+
+        .campo:focus {
+            border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, .12);
+        }
+
+        .campo::placeholder {
+            color: #64748b;
+        }
+
+        select.campo option {
+            background: #111c32;
+            color: #f8fafc;
+        }
+
+        .botao-principal {
+            background: #10b981;
+            color: #052e24;
+            font-weight: 700;
+            transition: .2s;
+        }
+
+        .botao-principal:hover {
+            background: #34d399;
+            transform: translateY(-1px);
+        }
+
+        .botao-secundario {
+            background: #1e293b;
+            color: #cbd5e1;
+            transition: .2s;
+        }
+
+        .botao-secundario:hover {
+            background: #334155;
+        }
     </style>
 </head>
+
 <body>
 
-<div class="container py-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card shadow-lg p-4">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h3 class="fw-bold mb-0">✨ Novo Cadastro</h3>
-                    <a href="index.php" class="btn btn-outline-secondary btn-sm">Cancelar</a>
+    <main class="max-w-4xl mx-auto px-4 py-8 md:py-12">
+
+        <div class="mb-8">
+            <a href="veiculos.php"
+               class="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-emerald-400 transition">
+
+                <span aria-hidden="true">←</span>
+                Voltar para veículos
+            </a>
+        </div>
+
+        <header class="mb-8">
+<div class="flex items-center gap-3 mb-3">
+
+                <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-2xl">
+                    🚗
                 </div>
 
-                <form method="POST" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small">LOJA ONDE O CARRO ESTÁ</label>
-                        <select name="id_loja" class="form-select form-select-lg" required>
-                            <option value="">Selecione a Loja...</option>
-                            <?php 
-                            $lojas = $conn->query("SELECT * FROM Loja ORDER BY nome");
-                            while($l = $lojas->fetch_assoc()) echo "<option value='{$l['id_loja']}'>{$l['nome']}</option>";
-                            ?>
-                        </select>
-                    </div>
+                <div>
+                    <p class="text-xs uppercase tracking-widest text-emerald-400 font-bold">
+                        AutoManagerPro
+                    </p>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small">MODELO DO VEÍCULO</label>
-                        <select name="id_modelo" class="form-select form-select-lg" required>
-                            <option value="">Selecione o Modelo...</option>
-                            <?php 
-                            $modelos = $conn->query("SELECT mo.id_modelo, mo.nome_modelo, ma.nome_marca 
-                                                   FROM Modelo mo JOIN Marca ma ON mo.id_marca = ma.id_marca 
-                                                   ORDER BY ma.nome_marca, mo.nome_modelo");
-                            while($m = $modelos->fetch_assoc()) {
-                                echo "<option value='{$m['id_modelo']}'>{$m['nome_marca']} - {$m['nome_modelo']}</option>";
-                            }
-                            ?>
-                        </select>
-                    </div>
+                    <h1 class="text-2xl md:text-3xl font-bold text-white">
+                        Cadastrar veículo
+                    </h1>
+                </div>
 
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold small">ANO</label>
-                            <input type="text" name="ano" class="form-control form-control-lg" placeholder="Ex: 2023/2024" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold small">PREÇO (R$)</label>
-                            <input type="number" step="0.01" name="preco" class="form-control form-control-lg" placeholder="Ex: 85900" required>
-                        </div>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label fw-bold small text-primary">FOTO DO VEÍCULO</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-white"><i class="bi bi-camera"></i></span>
-                            <input type="file" name="foto" class="form-control form-control-lg" accept="image/*">
-                        </div>
-                        <div class="form-text">Formatos aceitos: JPG, PNG ou WebP.</div>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm">
-                        <i class="bi bi-check-circle me-2"></i>Finalizar Cadastro
-                    </button>
-                </form>
             </div>
-        </div>
-    </div>
-</div>
+
+            <p class="text-slate-400 text-sm">
+                Preencha as informações abaixo para adicionar um veículo ao estoque.
+            </p>
+        </header>
+
+        <?php if (!empty($erros)): ?>
+
+            <div class="mb-6 p-4 rounded-xl border border-red-500/30 bg-red-500/10">
+
+                <p class="font-semibold text-red-400 mb-2">
+                    Não foi possível concluir o cadastro:
+                </p>
+
+                <ul class="list-disc list-inside space-y-1 text-sm text-red-300">
+                    <?php foreach ($erros as $erro): ?>
+                        <li><?= e($erro) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+
+            </div>
+
+        <?php endif; ?>
+
+        <form method="POST"
+              action="cadastrar.php"
+              enctype="multipart/form-data"
+              class="bg-painel border border-slate-700/70 rounded-2xl p-5 md:p-8 shadow-xl">
+
+            <input type="hidden"
+                   name="csrf_token"
+                   value="<?= e($_SESSION['csrf_cadastrar']) ?>">
+
+            <div class="mb-8">
+                <h2 class="text-lg font-bold text-white mb-1">
+                    Informações do veículo
+                </h2>
+
+                <p class="text-xs text-slate-400">
+                    Identificação e características principais.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- Loja -->
+
+                <div>
+                    <label for="id_loja"
+                           class="block text-sm font-semibold text-slate-300 mb-2">
+                        Loja responsável
+                    </label>
+
+                    <select name="id_loja"
+                            id="id_loja"
+                            class="campo"
+                            required>
+
+                        <option value="">Selecione uma loja</option>
+
+                        <?php foreach ($lojas as $loja): ?>
+
+                            <option value="<?= (int) $loja['id_loja'] ?>"
+                                <?= (string) $dados['id_loja'] === (string) $loja['id_loja'] ? 'selected' : '' ?>>
+
+                                <?= e($loja['nome']) ?>
+
+                            </option>
+
+                        <?php endforeach; ?>
+
+                    </select>
+                </div>
+
+                <!-- Modelo -->
+
+                <div>
+                    <label for="id_modelo"
+                           class="block text-sm font-semibold text-slate-300 mb-2">
+                        Modelo do veículo
+                    </label>
+
+                    <select name="id_modelo"
+                            id="id_modelo"
+                            class="campo"
+                            required>
+
+                        <option value="">Selecione um modelo</option>
+
+                        <?php foreach ($modelos as $modelo): ?>
+
+                            <option value="<?= (int) $modelo['id_modelo'] ?>"
+                                <?= (string) $dados['id_modelo'] === (string) $modelo['id_modelo'] ? 'selected' : '' ?>>
+
+                                <?= e(
+                                    ($modelo['nome_marca'] ?: 'Marca não informada')
+                                    . ' — '
+                                    . $modelo['nome_modelo']
+                                ) ?>
+
+                            </option>
+
+                        <?php endforeach; ?>
+
+                    </select>
+                </div>
+
+                <!-- Ano -->
+
+                <div>
+                    <label for="ano"
+                           class="block text-sm font-semibold text-slate-300 mb-2">
+                        Ano do veículo
+                    </label>
+
+                    <input type="number"
+                           name="ano"
+                           id="ano"
+                           class="campo"
+                           min="1900"
+                           max="<?= $anoMaximo ?>"
+                           step="1"
+                           placeholder="Ex.: 2024"
+                           value="<?= e($dados['ano']) ?>"
+                           required>
+                </div>
+
+                <!-- Preço -->
+
+                <div>
+                    <label for="preco"
+                           class="block text-sm font-semibold text-slate-300 mb-2">
+                        Preço de venda (R$)
+                    </label>
+
+                    <input type="text"
+                           name="preco"
+                           id="preco"
+                           class="campo"
+                           inputmode="decimal"
+                           placeholder="Ex.: 85000,00"
+                           value="<?= e($dados['preco']) ?>"
+                           required>
+                </div>
+
+            </div>
+
+            <!-- Foto -->
+
+            <div class="mt-8 pt-7 border-t border-slate-700/70">
+
+                <h2 class="text-lg font-bold text-white mb-1">
+                    Foto do veículo
+                </h2>
+
+                <p class="text-xs text-slate-400 mb-5">
+                    A imagem é opcional. Formatos aceitos: JPG, PNG e WebP. Limite de 5 MB.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+
+                    <div>
+                        <label for="foto"
+                               class="block text-sm font-semibold text-slate-300 mb-2">
+                            Selecionar imagem
+                        </label>
+
+                        <input type="file"
+                               name="foto"
+                               id="foto"
+                               class="campo"
+                               accept="image/jpeg,image/png,image/webp">
+
+                        <p class="text-xs text-slate-500 mt-2">
+                            Se nenhuma foto for enviada, será utilizada a imagem padrão.
+                        </p>
+                    </div>
+
+                    <div class="flex justify-center">
+
+                        <div class="w-full max-w-xs h-44 rounded-xl border border-dashed border-slate-600 bg-slate-900/60 flex items-center justify-center overflow-hidden">
+
+                            <img id="preview"
+                                 src=""
+                                 alt="Pré-visualização da foto"
+                                 class="hidden w-full h-full object-contain">
+
+                            <span id="previewTexto"
+                                  class="text-slate-500 text-sm text-center px-4">
+                                A pré-visualização aparecerá aqui
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Botões -->
+
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-10 pt-6 border-t border-slate-700/70">
+
+                <a href="veiculos.php"
+                   class="botao-secundario text-center px-6 py-3 rounded-xl font-semibold">
+                    Cancelar
+                </a>
+
+                <button type="submit"
+                        class="botao-principal px-6 py-3 rounded-xl">
+                    Cadastrar veículo
+                </button>
+
+            </div>
+
+        </form>
+
+        <footer class="text-center text-xs text-slate-600 mt-8">
+            AutoManagerPro — Sistema demonstrativo de gestão de veículos.
+        </footer>
+
+    </main>
+
+    <script>
+        const campoFoto = document.getElementById('foto');
+        const preview = document.getElementById('preview');
+        const previewTexto = document.getElementById('previewTexto');
+
+        let imagemAnterior = null;
+
+        campoFoto.addEventListener('change', function () {
+
+            if (imagemAnterior) {
+                URL.revokeObjectURL(imagemAnterior);
+                imagemAnterior = null;
+            }
+
+            const arquivo = this.files[0];
+
+            if (!arquivo) {
+                preview.src = '';
+                preview.classList.add('hidden');
+                previewTexto.classList.remove('hidden');
+                return;
+            }
+
+            const formatos = [
+                'image/jpeg',
+                'image/png',
+                'image/webp'
+            ];
+
+            if (!formatos.includes(arquivo.type)) {
+                alert('Selecione uma imagem JPG, PNG ou WebP.');
+                this.value = '';
+                preview.classList.add('hidden');
+                previewTexto.classList.remove('hidden');
+                return;
+            }
+
+            if (arquivo.size > 5 * 1024 * 1024) {
+                alert('A imagem deve ter no máximo 5 MB.');
+                this.value = '';
+                preview.classList.add('hidden');
+                previewTexto.classList.remove('hidden');
+                return;
+            }
+
+            imagemAnterior = URL.createObjectURL(arquivo);
+
+            preview.src = imagemAnterior;
+            preview.classList.remove('hidden');
+            previewTexto.classList.add('hidden');
+        });
+
+        window.addEventListener('beforeunload', function () {
+            if (imagemAnterior) {
+                URL.revokeObjectURL(imagemAnterior);
+            }
+        });
+    </script>
 
 </body>
 </html>
+
+
+
